@@ -1,6 +1,5 @@
 
-import ldap
-import ldap.sasl
+from ldap3 import Server, Connection, SASL, SUBTREE
 from django.contrib.auth.models import User, Group
 
 import six
@@ -16,20 +15,24 @@ class LDAPBackendException(Exception):
 
 class LDAPBackend(object):
 
-    def authenticate(self, username=None, password=None):
-        if not hasattr(self, "ldap_settings"):
-            self.ldap_settings = LDAPSettings()
-
+    def __init__(self, ldap_connection=None, ldap_settings=None):
+        self.ldap_connection = ldap_connection
+        self.ldap_settings = ldap_settings or LDAPSettings()
         if isinstance(self.ldap_settings.SERVER_URI, six.string_types):
-            servers_urls = [self.ldap_settings.SERVER_URI]
+            server_urls = [self.ldap_settings.SERVER_URI]
         else:
-            servers_urls = self.ldap_settings.SERVER_URI
+            server_urls = self.ldap_settings.SERVER_URI
+        self.servers = []
+        for server_url in server_urls:
+            self.servers.append(Server(server_url))
+
+    def authenticate(self, username=None, password=None):
 
         # For all configured servers try to connect
-        for server in servers_urls:
+        for server in self.servers:
             # Use self.ldap_connection object if such is given for testing with
             # mockldap.
-            if not hasattr(self, "ldap_connection"):
+            if self.ldap_connection is None:
                 try:
                     ldap_connection = self.ldap_open_connection(
                         server, username, password)
@@ -39,9 +42,7 @@ class LDAPBackend(object):
                     return None
             else:  # end up here with mock
                 ldap_connection = self.ldap_connection
-
-            for key, value in self.ldap_settings.CONNECTION_OPTIONS.items():
-                ldap_connection.set_option(key, value)
+                ldap_connection.rebind(user=username, password=password)
 
             # Do search
             try:
@@ -59,28 +60,24 @@ class LDAPBackend(object):
         except User.DoesNotExist:
             return None
 
-    def ldap_open_connection(self, ldap_url, username, password):
-        ldap_session = ldap.initialize(
-            ldap_url, trace_level=self.ldap_settings.TRACE_LEVEL)
-
-        sasl_auth = ldap.sasl.sasl({
-            ldap.sasl.CB_AUTHNAME: username,
-            ldap.sasl.CB_PASS: password,
-        },
-            self.ldap_settings.SASL_MECH
-        )
-
-        ldap_session.sasl_interactive_bind_s("", sasl_auth)
-        return ldap_session
+    def ldap_open_connection(self, server, username, password):
+        kwargs = {
+            server: server, user: user, password: password,
+            authentication: SASL, auto_bind: True
+        }
+        kwargs.update(self.ldap_settings.CONNECTION_OPTIONS)
+            
+        connection = Connection(**kwargs)
+        return connection
 
     # Search for user, returns users info (dict)
     def ldap_search_user(self, connection, username, password):
         ldap_result_id = connection.search(
-            self.ldap_settings.SEARCH_DN,
-            ldap.SCOPE_SUBTREE,
-            self.ldap_settings.SEARCH_FILTER % {
+            search_base=self.ldap_settings.SEARCH_DN,
+            search_scope=SUBTREE,
+            search_filter=self.ldap_settings.SEARCH_FILTER % {
                 "user": username})
-        result_all_type, result_all_data = connection.result(ldap_result_id, 1)
+        result_all_type, result_all_data = connection.get_result(ldap_result_id, 1)
         result_entries = []
         for result_type, result_data in result_all_data:
             if result_type is not None:
@@ -154,7 +151,7 @@ class LDAPBackend(object):
 
 class LDAPSettings(object):
     defaults = {
-        'CONNECTION_OPTIONS': {ldap.OPT_REFERRALS: 0},
+        'CONNECTION_OPTIONS': {},
         'SERVER_URI': 'ldap://localhost',
         'USER_FLAGS_BY_GROUP': {},
         'USER_GROUPS_BY_GROUP': {},

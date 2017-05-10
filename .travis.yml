@@ -8,11 +8,6 @@ env:
   - DJANGO_VERSION=1.4
   - DJANGO_VERSION=1.8
 
-apt:
-  packages:
-    - libldap2-dev
-    - libsasl2-dev
-
 sudo: false
  
 install: 

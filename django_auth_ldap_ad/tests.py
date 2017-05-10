@@ -1,10 +1,8 @@
-
-
-import mockldap
-import backend
+from __future__ import absolute_import
+from ldap3 import Server, Connection, MOCK_ASYNC
+from . import backend
 
 from django.test import TestCase
-
 
 from django.contrib.auth.models import User, Group
 
@@ -30,29 +28,14 @@ class LDAPBackendTest(TestCase):
     # {dn: {attr: [value, ...], ...}, ...}.
     directory = dict([top, alice])
 
-    @classmethod
-    def setUpClass(cls):
-        # We only need to create the MockLdap instance once. The content we
-        # pass in will be used for all LDAP connections.
-        cls.mockldap = mockldap.MockLdap(cls.directory)
-
-    @classmethod
-    def tearDownClass(cls):
-        del cls.mockldap
-
     def setUp(self):
-        self.mockldap.start()
-        self.ldapobj = self.mockldap['ldap://localhost/']
-        self.backend = backend.LDAPBackend()
-        self.backend.ldap_connection = self.ldapobj
-
-    def tearDown(self):
-        # Stop patching ldap.initialize and reset state.
-        self.mockldap.stop()
-        del self.ldapobj
+        self.server = Server("MockServer")
 
     def _init_settings(self, **kwargs):
-        self.backend.ldap_settings = TestSettings(**kwargs)
+        ldap_settings = TestSettings(**kwargs)
+        self.ldap_connection = Connection(self.server, client_strategy=MOCK_ASYNC)
+        self.backend = backend.LDAPBackend(ldap_connection=self.ldap_connection,
+                                           ldap_settings=ldap_settings)
 
     def test_options(self):
         self._init_settings(
