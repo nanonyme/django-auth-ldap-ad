@@ -1,6 +1,7 @@
 
-from ldap3 import Server, Connection, SASL, SUBTREE
+from ldap3 import Server, Connection, SASL, SUBTREE, ASYNC
 from django.contrib.auth.models import User, Group
+from ldap3.core.exceptions import LDAPInvalidCredentialsResult, LDAPException
 
 import six
 
@@ -15,8 +16,7 @@ class LDAPBackendException(Exception):
 
 class LDAPBackend(object):
 
-    def __init__(self, ldap_connection=None, ldap_settings=None):
-        self.ldap_connection = ldap_connection
+    def __init__(self, client_strategy=ASYNC, ldap_settings=None, connection_hook=None):
         self.ldap_settings = ldap_settings or LDAPSettings()
         if isinstance(self.ldap_settings.SERVER_URI, six.string_types):
             server_urls = [self.ldap_settings.SERVER_URI]
@@ -25,24 +25,20 @@ class LDAPBackend(object):
         self.servers = []
         for server_url in server_urls:
             self.servers.append(Server(server_url))
+        self.client_strategy = client_strategy
+        self.connection_hook = connection_hook
 
     def authenticate(self, username=None, password=None):
 
         # For all configured servers try to connect
         for server in self.servers:
-            # Use self.ldap_connection object if such is given for testing with
-            # mockldap.
-            if self.ldap_connection is None:
-                try:
-                    ldap_connection = self.ldap_open_connection(
-                        server, username, password)
-                except ldap.SERVER_DOWN:
-                    continue
-                except ldap.INVALID_CREDENTIALS:
-                    return None
-            else:  # end up here with mock
-                ldap_connection = self.ldap_connection
-                ldap_connection.rebind(user=username, password=password)
+            try:
+                ldap_connection = self.ldap_open_connection(
+                    server, username, password)
+            except LDAPException:
+                continue
+            except LDAPInvalidCredentialsResult:
+                return None
 
             # Do search
             try:
@@ -62,12 +58,15 @@ class LDAPBackend(object):
 
     def ldap_open_connection(self, server, username, password):
         kwargs = {
-            server: server, user: user, password: password,
-            authentication: SASL, auto_bind: True
+            "server": server, "user": username, "password": password,
+            "authentication": SASL, "auto_bind": True,
+            "client_strategy": self.client_strategy
         }
         kwargs.update(self.ldap_settings.CONNECTION_OPTIONS)
             
         connection = Connection(**kwargs)
+        if self.connection_hook is not None:
+            self.connection_hook(connection)
         return connection
 
     # Search for user, returns users info (dict)

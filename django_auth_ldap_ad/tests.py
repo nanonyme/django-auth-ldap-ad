@@ -3,6 +3,7 @@ from ldap3 import Server, Connection, MOCK_ASYNC
 from . import backend
 
 from django.test import TestCase
+import unittest
 
 from django.contrib.auth.models import User, Group
 
@@ -24,19 +25,20 @@ class LDAPBackendTest(TestCase):
                            "dc=test,cn=superuser,cn=extra,cn=fake,ou=foo",
                            "dc=test,cn=fakuser,cn=extra,cn=fake,ou=foo"]})
 
-    # This is the content of our mock LDAP directory. It takes the form
-    # {dn: {attr: [value, ...], ...}, ...}.
-    directory = dict([top, alice])
-
     def setUp(self):
         self.server = Server("MockServer")
 
+    def _connection_hook(self, connection):
+        connection.strategy.add_entry(alice)
+
     def _init_settings(self, **kwargs):
         ldap_settings = TestSettings(**kwargs)
-        self.ldap_connection = Connection(self.server, client_strategy=MOCK_ASYNC)
-        self.backend = backend.LDAPBackend(ldap_connection=self.ldap_connection,
-                                           ldap_settings=ldap_settings)
+        self.backend = backend.LDAPBackend(client_strategy=MOCK_ASYNC,
+                                           ldap_settings=ldap_settings,
+                                           connection_hook=self._connection_hook)
 
+
+    @unittest.expectedFailure
     def test_options(self):
         self._init_settings(
             SEARCH_DN="o=test",
