@@ -1,4 +1,3 @@
-
 from ldap3 import Server, Connection, SASL, SUBTREE, ASYNC
 from django.contrib.auth.models import User, Group
 from ldap3.core.exceptions import LDAPInvalidCredentialsResult, LDAPException
@@ -63,8 +62,9 @@ class LDAPBackend(object):
             "client_strategy": self.client_strategy
         }
         kwargs.update(self.ldap_settings.CONNECTION_OPTIONS)
-            
+
         connection = Connection(**kwargs)
+
         if self.connection_hook is not None:
             self.connection_hook(connection)
         return connection
