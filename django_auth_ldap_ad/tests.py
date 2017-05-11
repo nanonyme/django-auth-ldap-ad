@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from ldap3 import MOCK_ASYNC
+from ldap3 import MOCK_SYNC, Connection
 from . import backend
 
 from django.test import TestCase
@@ -15,7 +15,6 @@ class TestSettings(backend.LDAPSettings):
             value = kwargs.get(name, default)
             setattr(self, name, value)
 
-
 class LDAPBackendTest(TestCase):
     top = ('o=test', {'o': 'test'})
     alice = ('cn=alice,ou=example,o=test',
@@ -25,14 +24,18 @@ class LDAPBackendTest(TestCase):
                            "dc=test,cn=superuser,cn=extra,cn=fake,ou=foo",
                            "dc=test,cn=fakuser,cn=extra,cn=fake,ou=foo"]})
 
-    def _connection_hook(self, connection):
-        connection.strategy.add_entry(self.alice)
+    def setUp(self):
+        self.backend = backend.LDAPBackend()
+        self.backend.connection = self._create_connection
+
+    def _create_connection(self, **kwargs):
+        kwargs["client_strategy"] = MOCK_SYNC
+        connection = Connection(**kwargs)
+        connection.strategy.add_entry(*self.alice)
+        return connection
 
     def _init_settings(self, **kwargs):
-        ldap_settings = TestSettings(**kwargs)
-        self.backend = backend.LDAPBackend(client_strategy=MOCK_ASYNC,
-                                           ldap_settings=ldap_settings,
-                                           connection_hook=self._connection_hook)
+        self.backend.ldap_settings = TestSettings(**kwargs)
 
     @unittest.expectedFailure
     def test_options(self):

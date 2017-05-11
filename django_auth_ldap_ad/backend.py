@@ -1,6 +1,6 @@
-from ldap3 import Server, Connection, SASL, SUBTREE, ASYNC
+from ldap3 import Server, Connection, SASL, SUBTREE, SYNC
 from django.contrib.auth.models import User, Group
-from ldap3.core.exceptions import LDAPInvalidCredentialsResult, LDAPException
+from ldap3.core.exceptions import LDAPInvalidCredentialsResult, LDAPSocketOpenError
 
 import six
 
@@ -15,26 +15,27 @@ class LDAPBackendException(Exception):
 
 class LDAPBackend(object):
 
-    def __init__(self, client_strategy=ASYNC, ldap_settings=None, connection_hook=None):
-        self.ldap_settings = ldap_settings or LDAPSettings()
+    def __init__(self):
+        self.connection = Connection
+        self.ldap_settings = LDAPSettings()
+
+    def _generate_servers(self):
         if isinstance(self.ldap_settings.SERVER_URI, six.string_types):
             server_urls = [self.ldap_settings.SERVER_URI]
         else:
             server_urls = self.ldap_settings.SERVER_URI
         self.servers = []
         for server_url in server_urls:
-            self.servers.append(Server(server_url))
-        self.client_strategy = client_strategy
-        self.connection_hook = connection_hook
+            yield Server(server_url)
 
     def authenticate(self, username=None, password=None):
 
         # For all configured servers try to connect
-        for server in self.servers:
+        for server in self._generate_servers():
             try:
                 ldap_connection = self.ldap_open_connection(
                     server, username, password)
-            except LDAPException:
+            except LDAPSocketOpenError:
                 continue
             except LDAPInvalidCredentialsResult:
                 return None
@@ -58,15 +59,12 @@ class LDAPBackend(object):
     def ldap_open_connection(self, server, username, password):
         kwargs = {
             "server": server, "user": username, "password": password,
-            "authentication": SASL, "auto_bind": True,
-            "client_strategy": self.client_strategy
+            "authentication": SASL,
         }
         kwargs.update(self.ldap_settings.CONNECTION_OPTIONS)
-
-        connection = Connection(**kwargs)
-
-        if self.connection_hook is not None:
-            self.connection_hook(connection)
+        kwargs["client_strategy"] = SYNC
+        connection = self.connection(**kwargs)
+        connection.bind()
         return connection
 
     # Search for user, returns users info (dict)
