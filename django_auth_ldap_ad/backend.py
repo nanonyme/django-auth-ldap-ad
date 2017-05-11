@@ -39,15 +39,17 @@ class LDAPBackend(object):
                 continue
             except LDAPInvalidCredentialsResult:
                 return None
-
-            # Do search
             try:
-                ldap_user_info = self.ldap_search_user(
-                    ldap_connection, username, password)
-            except LDAPBackendException:
-                return None
+                # Do search
+                try:
+                    ldap_user_info = self.ldap_search_user(
+                        ldap_connection, username, password)
+                except LDAPBackendException:
+                    return None
 
-            return self.get_local_user(username, ldap_user_info)
+                return self.get_local_user(username, ldap_user_info)
+            finally:
+                ldap_connection.unbind()
         return None
 
     def get_user(self, user_id):
@@ -60,6 +62,7 @@ class LDAPBackend(object):
         kwargs = {
             "server": server, "user": username, "password": password,
             "authentication": SASL,
+            "sasl_mechanism": self.ldap_settings.SASL_MECH
         }
         kwargs.update(self.ldap_settings.CONNECTION_OPTIONS)
         kwargs["client_strategy"] = SYNC
@@ -72,14 +75,12 @@ class LDAPBackend(object):
         ldap_result_id = connection.search(
             search_base=self.ldap_settings.SEARCH_DN,
             search_scope=SUBTREE,
+            attributes=["memberOf"],
             search_filter=self.ldap_settings.SEARCH_FILTER % {
                 "user": username})
-        result_all_type, result_all_data = connection.get_result(ldap_result_id, 1)
-        result_entries = []
-        for result_type, result_data in result_all_data:
-            if result_type is not None:
-                result_entries.append(result_data)
 
+        result_entries = connection.entries
+ 
         if len(result_entries) == 0:
             raise LDAPBackendException("No entries found!")
 
@@ -98,7 +99,11 @@ class LDAPBackend(object):
             user.set_unusable_password()
         # refresh memberships
         members_of = []
-        for group in info.get('memberOf', []):
+        try:
+            groups = info["memberOf"]
+        except AttributeError:
+            groups = []
+        for group in groups:
             members_of.append(group.lower().split(","))
 
         # Set first_name or last_name or email ..
