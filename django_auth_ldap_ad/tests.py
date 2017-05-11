@@ -3,7 +3,6 @@ from ldap3 import MOCK_SYNC, Connection
 from . import backend
 
 from django.test import TestCase
-import unittest
 
 from django.contrib.auth.models import User, Group
 
@@ -14,6 +13,7 @@ class TestSettings(backend.LDAPSettings):
         for name, default in self.defaults.items():
             value = kwargs.get(name, default)
             setattr(self, name, value)
+
 
 class LDAPBackendTest(TestCase):
     top = ('o=test', {'o': 'test'})

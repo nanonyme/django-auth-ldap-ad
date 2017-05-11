@@ -73,15 +73,16 @@ class LDAPBackend(object):
     # Search for user, returns users info (dict)
     def ldap_search_user(self, connection, username, password):
         attributes = ["memberOf"] + list(self.ldap_settings.USER_ATTR_MAP.values())
-        ldap_result_id = connection.search(
+        if not connection.search(
             search_base=self.ldap_settings.SEARCH_DN,
             search_scope=SUBTREE,
             attributes=attributes,
             search_filter=self.ldap_settings.SEARCH_FILTER % {
-                "user": username})
+                "user": username}):
+            raise LDAPBackendException("Failure searching for user")
 
         result_entries = connection.entries
- 
+
         if len(result_entries) == 0:
             raise LDAPBackendException("No entries found!")
 
