@@ -27,24 +27,25 @@ class LDAPBackendTest(TestCase):
     def setUp(self):
         self.backend = backend.LDAPBackend()
         self.backend.connection = self._create_connection
+        self.last_connection = None
 
     def _create_connection(self, **kwargs):
         kwargs["client_strategy"] = MOCK_SYNC
         connection = Connection(**kwargs)
         connection.strategy.add_entry(*self.alice)
+        self.last_connection = connection
         return connection
 
     def _init_settings(self, **kwargs):
         self.backend.ldap_settings = TestSettings(**kwargs)
 
-    @unittest.expectedFailure
     def test_options(self):
         self._init_settings(
             SEARCH_DN="o=test",
-            CONNECTION_OPTIONS={'opt1': 'value1'}
+            CONNECTION_OPTIONS={'read_only': True}
         )
         self.backend.authenticate(username='alice', password='alicepw')
-        self.assertEqual(self.ldapobj.get_option('opt1'), 'value1')
+        self.assertEqual(self.last_connection.read_only, True)
 
     def test_server_uri_string(self):
         self._init_settings(
