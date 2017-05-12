@@ -16,6 +16,9 @@ class LDAPBackendException(Exception):
 class LDAPBackend(object):
 
     def __init__(self):
+        # References are stored as instance variables so tests can replace
+        # these in the instance with fakes/mocks without affecting
+        # business logic
         self.connection = ldap3.Connection
         self.ldap_settings = LDAPSettings()
 
