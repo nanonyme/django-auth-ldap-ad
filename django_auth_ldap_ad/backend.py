@@ -1,6 +1,6 @@
-from ldap3 import Server, Connection, SASL, SUBTREE, SYNC
+import ldap3
 from django.contrib.auth.models import User, Group
-from ldap3.core.exceptions import LDAPInvalidCredentialsResult, LDAPSocketOpenError
+from ldap3.core import exceptions
 
 import six
 
@@ -16,7 +16,7 @@ class LDAPBackendException(Exception):
 class LDAPBackend(object):
 
     def __init__(self):
-        self.connection = Connection
+        self.connection = ldap3.Connection
         self.ldap_settings = LDAPSettings()
 
     def _generate_servers(self):
@@ -24,9 +24,8 @@ class LDAPBackend(object):
             server_urls = [self.ldap_settings.SERVER_URI]
         else:
             server_urls = self.ldap_settings.SERVER_URI
-        self.servers = []
         for server_url in server_urls:
-            yield Server(server_url)
+            yield ldap3.Server(server_url)
 
     def authenticate(self, username=None, password=None):
 
@@ -35,9 +34,9 @@ class LDAPBackend(object):
             try:
                 ldap_connection = self.ldap_open_connection(
                     server, username, password)
-            except LDAPSocketOpenError:
+            except exceptions.LDAPSocketOpenError:
                 continue
-            except LDAPInvalidCredentialsResult:
+            except exceptions.LDAPInvalidCredentialsResult:
                 return None
             try:
                 # Do search
@@ -61,11 +60,11 @@ class LDAPBackend(object):
     def ldap_open_connection(self, server, username, password):
         kwargs = {
             "server": server, "user": username, "password": password,
-            "authentication": SASL,
+            "authentication": ldap3.SASL,
             "sasl_mechanism": self.ldap_settings.SASL_MECH
         }
         kwargs.update(self.ldap_settings.CONNECTION_OPTIONS)
-        kwargs["client_strategy"] = SYNC
+        kwargs["client_strategy"] = ldap3.SYNC
         connection = self.connection(**kwargs)
         connection.bind()
         return connection
@@ -75,7 +74,7 @@ class LDAPBackend(object):
         attributes = ["memberOf"] + list(self.ldap_settings.USER_ATTR_MAP.values())
         if not connection.search(
             search_base=self.ldap_settings.SEARCH_DN,
-            search_scope=SUBTREE,
+            search_scope=ldap3.SUBTREE,
             attributes=attributes,
             search_filter=self.ldap_settings.SEARCH_FILTER % {
                 "user": username}):

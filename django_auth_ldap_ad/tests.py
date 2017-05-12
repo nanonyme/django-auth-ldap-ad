@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from ldap3 import MOCK_SYNC, Connection
+import ldap3
 from . import backend
 
 from django.test import TestCase
@@ -30,8 +30,8 @@ class LDAPBackendTest(TestCase):
         self.last_connection = None
 
     def _create_connection(self, **kwargs):
-        kwargs["client_strategy"] = MOCK_SYNC
-        connection = Connection(**kwargs)
+        kwargs["client_strategy"] = ldap3.MOCK_SYNC
+        connection = ldap3.Connection(**kwargs)
         connection.strategy.add_entry(*self.alice)
         self.last_connection = connection
         return connection
